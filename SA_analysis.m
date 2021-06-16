@@ -13,7 +13,7 @@ M = readtable('SA_data_reduced_60x.csv');
 timestamp = M(:,1);
 timestamp = table2array(timestamp);
 
-% attitude data
+% position data
 posX = table2array(M(:,4)); % [km]
 posY = table2array(M(:,5));
 posZ = table2array(M(:,6));
@@ -45,20 +45,18 @@ utc = datevec(DateTime);
 %% convert position to lat/long
 
 r = [posX posY posZ];
-lla = eci2lla(r, utc);
+lla = eci2lla(r, [year month day hour mins sec]);
 
 lat = lla(:,1);
 long = lla(:,2);
 h = lla(:,3);
-
+toc
 %% Calculate orbit beta angle
-
+% tic
 % ecliptic true solar longitude
-GMTOffset = 0;
-Gamma = solar_ecliptic(year, month, day, hour, mins, GMTOffset);
+% [~, ~, Gamma, ~ ] = earthEphemeris(DateTime);
 
-% calculate RAAN
-% need velocity
+% calculate RAAN - need velocity
 
 %% interpolate
 
@@ -76,6 +74,8 @@ Gamma = solar_ecliptic(year, month, day, hour, mins, GMTOffset);
 %% filter out >|52| lat
 
 timevec_flt = timevec(lat<=abs(52));
+mins_flt = mins(lat<=abs(52));
+
 PSARJ_flt = PSARJ(lat<=abs(52));
 P44A_BGA_flt = P44A_BGA(lat<=abs(52));
 P42A_BGA_flt = P42A_BGA(lat<=abs(52));
@@ -88,146 +88,93 @@ P42A_BGA_flt = P42A_BGA(lat<=abs(52));
 
 %% find intrusions into kov and fov
 
-% time instances and alpha angles of intrusions into EMIT FOV
-t2A_fov = timevec_flt(PSARJ_flt >= 268 & PSARJ_flt <= 276);
-PSARJ_2Afov = PSARJ_flt(PSARJ_flt >= 268 & PSARJ_flt <= 276);
+% time instances and alpha angles of intrusions into KOZ and FOV
+[afov2, tafov2, akoz2, takoz2, afov4, tafov4, akoz4, takoz4] = alphaIntrusions(PSARJ_flt, timevec_flt);
 
-t4A_fov = timevec_flt(PSARJ_flt >= 89 & PSARJ_flt <= 96);
-PSARJ_4Afov = PSARJ_flt(PSARJ_flt >= 89 & PSARJ_flt <= 96);
+% time instances and beta angles of intrusions into KOZ
+[bkoz2, tbkoz2, bkoz4, tbkoz4] = betaIntrusions(PSARJ_flt, P42A_BGA_flt, P44A_BGA_flt, timevec_flt);
 
-% time instances and alpha angles of intrusions into stray light KOZ envelope
-t2A_koz_a = timevec_flt(PSARJ_flt>=255 & PSARJ_flt<=289);
-PSARJ_2Akoz = PSARJ_flt(PSARJ_flt>=255 & PSARJ_flt<=289);
+%% time lost
 
-t4A_koz_a = timevec_flt(PSARJ_flt>=75 & PSARJ_flt<=110); 
-PSARJ_4Akoz = PSARJ_flt(PSARJ_flt>=75 & PSARJ_flt<=110);
+% amount of time missing from data set- unrelated to intrusions
+[totaldata, ~] = size(mins);
+expecteddata = 365*24*60;
+mins_missing = expecteddata - totaldata;
+hours_missing = mins_missing/60;
+days_missing = hours_missing/24;
 
-% time instances and beta angles of intrusions into KOZ (tolerances??)
-t2A_koz_b = timevec_flt(((PSARJ_flt>=269.99 & PSARJ_flt <= 270.01) & (P42A_BGA_flt >=24 & P42A_BGA_flt <= 150)) | ((PSARJ_flt>=269.99 & PSARJ_flt <= 270.01)& (P42A_BGA_flt >=229 & P42A_BGA_flt <= 337)));
-BGA_2Akoz = P42A_BGA_flt(((PSARJ_flt>=269.99 & PSARJ_flt <= 270.01) & (P42A_BGA_flt >=24 & P42A_BGA_flt <= 150)) | ((PSARJ_flt>=269.99 & PSARJ_flt <= 270.01) & (P42A_BGA_flt >=229 & P42A_BGA_flt <= 337)));
+[totalmins, ~] = size(mins_flt); % number of minutes spent taking science
 
-t4A_koz_b = timevec_flt(((PSARJ_flt>=89.99 & PSARJ_flt <= 90.01) & (P44A_BGA_flt >=41 & P44A_BGA_flt<=149)) | ((PSARJ_flt>=89.99 & PSARJ_flt <= 90.01) & (P44A_BGA_flt>=230 & P44A_BGA_flt<=338)));
-BGA_4Akoz = P44A_BGA_flt(((PSARJ_flt>=89.99 & PSARJ_flt <= 90.01) & (P44A_BGA_flt >=41 & P44A_BGA_flt<=149)) | ((PSARJ_flt>=89.99 & PSARJ_flt <= 90.01) & (P44A_BGA_flt>=230 & P44A_BGA_flt<=338)));
+% time p4-2A intruded into koz due to dynamic psarj
+[tint_akoz2,~] = size(takoz2); 
+[tint_bkoz2,~] = size(tbkoz2);
+plost_akoz2 = (tint_akoz2/totalmins)*100; % percent of time lost due to p4-4a intrusions
+fprintf('PSARJ dynamic rotation resulted in P4-2A intrusion into EMIT KOZ for a total of %d minutes and %d%% of mission operation time\n', tint_akoz2, plost_akoz2); 
 
-% repeat beta angles with interpolated data (tolerances???)
-% t2A_koz_b_int = timevec_int(((PSARJ_int>=269.99 & PSARJ_int <= 270.01) & (P42A_BGA_int >=24 & P42A_BGA_int <= 150)) | ((PSARJ_int>=269.99 & PSARJ_int <= 270.01) & (P42A_BGA_int >=229 & P42A_BGA_int <= 337)));
-% BGA_2Akoz_int = P42A_BGA_int((P(PSARJ_int>=269.99 & PSARJ_int <= 270.01)& (P42A_BGA_int >=24 & P42A_BGA_int <= 150)) | ((PSARJ_int>=269.99 & PSARJ_int <= 270.01) & (P42A_BGA_int >=229 & P42A_BGA_int <= 337)));
-% 
-% t4A_koz_b_int = timevec_int(((PSARJ_int>=89.99 & PSARJ_int <= 90.01) & (P44A_BGA_int >=41 & P44A_BGA_int <= 149)) | ((PSARJ_int>=89.99 & PSARJ_int <= 90.01) & (P44A_BGA_int >= 230 & P44A_BGA_int <=338)));
-% BGA_4Akoz_int = P44A_BGA_int(((PSARJ_int>=89.99 & PSARJ_int <= 90.01) & (P44A_BGA_int >=41 & P44A_BGA_int <= 149)) | ((PSARJ_int>=89.99 & PSARJ_int <= 90.01) & (P44A_BGA_int >=230 & P44A_BGA_int <=338)));
+% time p4-4A intruded into koz due to dynamic psarj
+[tint_akoz4,~] = size(takoz4); 
+[tint_bkoz4,~] = size(tbkoz4);
+plost_akoz4 = (tint_akoz4/totalmins)*100; % percent of time lost due to p4-4a intrusions
+fprintf('PSARJ dynamic rotation resulted in P4-4A intrusion into EMIT KOZ for a total of %d minutes and %d%% of mission operation time\n', tint_akoz4, plost_akoz4); 
 
+% time p4-2A intruded into fov due to dynamic psarj
+[tint_afov2,~] = size(tafov2); 
+plost_afov2 = (tint_afov2/totalmins)*100; % percent of time lost due to p4-4a intrusions
+fprintf('PSARJ dynamic rotation resulted in P4-2A intrusion into EMIT FOV for a total of %d minutes and %d%% of mission operation time\n', tint_afov2, plost_afov2); 
 
-%% Percent overlap
+% time p4-4A intruded into fov due to dynamic psarj
+[tint_afov4,~] = size(tafov4); 
+plost_afov4 = (tint_afov4/totalmins)*100; % percent of time lost due to p4-4a intrusions
+fprintf('PSARJ dynamic rotation resulted in P4-44 intrusion into EMIT FOV for a total of %d minutes and %d%% of mission operation time\n', tint_afov4, plost_afov4); 
 
-percFOV = ((sum(t2A_fov)+sum(t4A_fov))/sum(timevec_flt))*100; % percentage of time
-percKOZ = ((sum(t2A_koz_a) + sum(t4A_koz_a))/sum(timevec_flt))*100;
+% total time KOZ intruded on due to dynamic psarj
+ttotal_koz = tint_akoz2 + tint_akoz4;
 
-%% total time lost
-
+% total time FOV intruded on due to dynamic psarj
+ttotal_fov = tint_afov2 + tint_afov4;
 
 %% make plots
+close all
 
-% plot orbit of ISS
+nbins = 1;
 figure()
-Re = 6397; % [km]
-plot3(posX, posY, posZ);
+t = tiledlayout(1,2);
+title(t,'P4-2A SAW Interference','FontWeight','Bold');
+nexttile
+histogram(akoz2,'BinWidth',nbins);
 hold on
-[XS, YS, ZS] = sphere(30); % plot the Earth using Matlab sphere command
-surf(XS*Re, YS*Re, ZS*Re);
-xlabel('x [km]');
-ylabel('y [km]');
-zlabel('z [km]');
-title('Orbit of ISS Around Earth');
+histogram(afov2,'BinWidth',nbins,'FaceColor','red');
 hold off
+xlabel('Angle [deg]');
+ylabel('Frequency [min]');
+title(['Dynamic PSARJ Rotation Causes Interferences in EMIT KOZ for ',num2str(tint_akoz2),' min'],['Interference in EMIT FOV for ',num2str(tint_afov2),' min'],'FontWeight','normal');
+legend('KOZ Interference 255^o-289^o','FOV Inteference 268^o-276^o');
 
-% alpha angles
-figure()
-plot(timevec_flt, PSARJ_flt)
-hold on
-plot(t2A_fov, PSARJ_2Afov);
-plot(t4A_fov, PSARJ_4Afov);
-legend('PSARJ Angles','Region of P4-2A Intrusion (268^o - 276^o)','Region of P4-4A Intrusion (89^o - 96^o)');
-xlabel('Time [days]');
-ylabel('\alpha [deg]');
-title(['ISS SAW PSARJs intrude into EMIT FOV ' num2str(percFOV) '% of 2019']);
-hold off
+nexttile
+histogram(bkoz2);
+xlabel('Angle [deg]');
+ylabel('Frequency [min]');
+title(['In PSARJ Range (left), Static BGA Intrusion into KOZ for ', num2str(tint_bkoz2),' min'],['Ranges: 24^o-15^o & 229^o-227^o'],'FontWeight','normal');
+ylim([0 1200]);
 
 figure()
-plot(timevec_flt, PSARJ_flt)
+t = tiledlayout(1,2);
+title(t,'P4-4A SAW Interference','FontWeight','Bold');
+nexttile
+histogram(akoz4,'BinWidth',nbins);
 hold on
-plot(t2A_koz_a, PSARJ_2Akoz)
-plot(t4A_koz_a, PSARJ_4Akoz)
-legend('All PSARJ Angles','P4-2A Intrusion into EMIT KOZ','P4-4A Intrusion into EMIT KOZ');
-ylabel('\alpha [deg]');
-xlabel('Time [days]');
-title(['ISS SAW PSARJ intrude into EMIT KOZ ' num2str(percKOZ) '% of 2019']);
+histogram(afov4,'BinWidth',nbins,'FaceColor','red');
 hold off
+xlabel('Angle [deg]');
+ylabel('Frequency [min]');
+title(['P4-4A Interferences in EMIT KOZ for ',num2str(tint_akoz4),' min'],['Interference in EMIT FOV for ',num2str(tint_afov4),' min'],'FontWeight','normal');
+legend('KOZ Interference 75^o-110^o','FOV Inteference 89^o-96^o');
 
-% beta angles
-figure()
-plot(timevec_flt, P42A_BGA_flt);
-hold on
-plot(t2A_koz_b, BGA_2Akoz,'*');
-legend('P4-2A BGA Angles','P4-2A intrusions into EMIT KOZ');
-ylabel('\beta [deg]');
-xlabel('Time [days]');
-title('\alpha=270^o, Beta angles resulting in P4-2A SAW Intrusions into EMIT KOZ');
-hold off
-
-figure()
-plot(timevec_flt, P44A_BGA_flt);
-hold on
-plot(t4A_koz_b, BGA_4Akoz,'*');
-legend('P4-4A BGA Angles','P4-4A intrusions into EMIT KOZ');
-ylabel('\beta [deg]');
-xlabel('Time [days]');
-title('\alpha=90^o, Beta angles resulting in P4-4A SAW Intrusions into EMIT KOZ');
-hold off
-
-% % beta anlges with interpolated data
-% figure()
-% plot(timevec_int, P42A_BGA_int);
-% hold on
-% plot(t2A_koz_b_int, BGA_2Akoz_int);
-% legend('P4-2A BGA Angles','P4-2A intrusions into EMIT KOZ');
-% ylabel('\beta [deg]');
-% xlabel('Time [days]');
-% title({'\alpha=270^o, Beta angles resulting in P4-2A SAW Intrusions into EMIT KOZ'},{'Interpolated'});
-% hold off
-% 
-% figure()
-% plot(timevec_int, P44A_BGA_int);
-% hold on
-% plot(t4A_koz_b_int, BGA_4Akoz_int);
-% legend('P4-4A BGA Angles','P4-4A intrusions into EMIT KOZ');
-% ylabel('\beta [deg]');
-% xlabel('Time [days]');
-% title({'\alpha=90^o, Beta angles resulting in P4-4A SAW Intrusions into EMIT KOZ'},{'Interpolated'});
-% hold off
-
-% histograms
-
-figure() % PSARJ into FOV
-histogram(PSARJ_flt);
-hold on
-histogram(PSARJ_2Afov);
-histogram(PSARJ_4Afov);
-legend('PSARJ angles','P4-2A Intrusion (268^o - 276^o)','P4-4A Intrusion (89^o - 96^o)','Location','northwest')
-xlabel('Angles [deg]');
-ylabel('Frequency');
-title(['ISS SAW PSARJs intrude into EMIT FOV ' num2str(percFOV) '% of 2019']);
-hold off
-
-figure() % PSARJ into KOZ
-histogram(PSARJ_flt);
-hold on
-histogram(PSARJ_2Akoz);
-histogram(PSARJ_4Akoz);
-legend('PSARJ angles','P4-2A Intrusion (255^o - 289^o)','P4-4A Intrusion (75^o - 110^o)','Location','northwest')
-xlabel('Angles [deg]');
-ylabel('Frequency');
-title(['ISS SAW PSARJs intrude into EMIT KOZ ' num2str(percKOZ) '% of 2019']);
-hold off
-
+nexttile
+histogram(bkoz4);
+xlabel('Angle [deg]');
+ylabel('Frequency [min]');
+title(['In PSARJ Range (left), static BGA intrusion into KOZ for ', num2str(tint_bkoz4),' min'],['Ranges: 41^o-149^o & 230^o-338^o'],'FontWeight','normal');
 
 toc
+
