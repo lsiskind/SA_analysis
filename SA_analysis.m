@@ -94,21 +94,26 @@ P42A_BGA_flt = P42A_BGA(lat<=abs(52));
 % time instances and beta angles of intrusions into KOZ
 [bkoz2, tbkoz2, bkoz4, tbkoz4] = betaIntrusions(PSARJ_flt, P42A_BGA_flt, P44A_BGA_flt, timevec_flt);
 
+% alpha angles where bga intrusions occur
+[abkoz2, abkoz4, tabkoz2, tabkoz4] = alphabetaIntrusions(PSARJ_flt, P42A_BGA_flt, P44A_BGA_flt, timevec_flt);
+
 %% time lost
 
 % amount of time missing from data set- unrelated to intrusions
+% (pre-filter)
 [totaldata, ~] = size(mins);
 expecteddata = 365*24*60;
 mins_missing = expecteddata - totaldata;
 hours_missing = mins_missing/60;
 days_missing = hours_missing/24;
+perc_missing = (mins_missing/expecteddata)*100;
 
 [totalmins, ~] = size(mins_flt); % number of minutes spent taking science
 
 % time p4-2A intruded into koz due to dynamic psarj
 [tint_akoz2,~] = size(takoz2); 
 [tint_bkoz2,~] = size(tbkoz2);
-plost_akoz2 = (tint_akoz2/totalmins)*100; % percent of time lost due to p4-4a intrusions
+plost_akoz2 = (tint_akoz2/totalmins)*100; % percent of time lost due to p4-2a intrusions
 fprintf('PSARJ dynamic rotation resulted in P4-2A intrusion into EMIT KOZ for a total of %d minutes and %d%% of mission operation time\n', tint_akoz2, plost_akoz2); 
 
 % time p4-4A intruded into koz due to dynamic psarj
@@ -128,7 +133,8 @@ plost_afov4 = (tint_afov4/totalmins)*100; % percent of time lost due to p4-4a in
 fprintf('PSARJ dynamic rotation resulted in P4-44 intrusion into EMIT FOV for a total of %d minutes and %d%% of mission operation time\n', tint_afov4, plost_afov4); 
 
 % total time KOZ intruded on due to dynamic psarj
-ttotal_koz = tint_akoz2 + tint_akoz4;
+ttotal_koz = tint_akoz2 + tint_akoz4; %[min]
+perc_total_koz = ((ttotal_koz)/totalmins)*100;
 
 % total time FOV intruded on due to dynamic psarj
 ttotal_fov = tint_afov2 + tint_afov4;
@@ -136,7 +142,8 @@ ttotal_fov = tint_afov2 + tint_afov4;
 %% make plots
 close all
 
-nbins = 1;
+%----------------histograms----------------
+nbins = .5;
 figure()
 t = tiledlayout(1,2);
 title(t,'P4-2A SAW Interference','FontWeight','Bold');
@@ -144,17 +151,19 @@ nexttile
 histogram(akoz2,'BinWidth',nbins);
 hold on
 histogram(afov2,'BinWidth',nbins,'FaceColor','red');
+histogram(abkoz2, 'BinWidth', nbins,'FaceColor','green');
 hold off
 xlabel('Angle [deg]');
 ylabel('Frequency [min]');
 title(['Dynamic PSARJ Rotation Causes Interferences in EMIT KOZ for ',num2str(tint_akoz2),' min'],['Interference in EMIT FOV for ',num2str(tint_afov2),' min'],'FontWeight','normal');
-legend('KOZ Interference 255^o-289^o','FOV Inteference 268^o-276^o');
+legend('KOZ Interference 255^o-289^o','FOV Inteference 268^o-276^o','PSARJ Angles where BGA Interference Occurs');
 
 nexttile
 histogram(bkoz2);
 xlabel('Angle [deg]');
 ylabel('Frequency [min]');
-title(['In PSARJ Range (left), Static BGA Intrusion into KOZ for ', num2str(tint_bkoz2),' min'],['Ranges: 24^o-15^o & 229^o-227^o'],'FontWeight','normal');
+legend('BGA Interference Range: 24^o-15^o & 229^o-227^o');
+title(['In PSARJ Range (left), Static BGA Intrusion into KOZ for ', num2str(tint_bkoz2),' min'],'FontWeight','normal');
 ylim([0 1200]);
 
 figure()
@@ -164,17 +173,34 @@ nexttile
 histogram(akoz4,'BinWidth',nbins);
 hold on
 histogram(afov4,'BinWidth',nbins,'FaceColor','red');
+histogram(abkoz4, 'BinWidth', nbins,'FaceColor','green');
 hold off
 xlabel('Angle [deg]');
 ylabel('Frequency [min]');
-title(['P4-4A Interferences in EMIT KOZ for ',num2str(tint_akoz4),' min'],['Interference in EMIT FOV for ',num2str(tint_afov4),' min'],'FontWeight','normal');
-legend('KOZ Interference 75^o-110^o','FOV Inteference 89^o-96^o');
+title(['Dynamic PSARJ Rotation Causes Interferences in EMIT KOZ for ',num2str(tint_akoz4),' min'],['Interference in EMIT FOV for ',num2str(tint_afov4),' min'],'FontWeight','normal');
+legend('KOZ Interference 75^o-110^o','FOV Inteference 89^o-96^o','PSARJ Angles where BGA Interference Occurs');
 
 nexttile
 histogram(bkoz4);
 xlabel('Angle [deg]');
 ylabel('Frequency [min]');
-title(['In PSARJ Range (left), static BGA intrusion into KOZ for ', num2str(tint_bkoz4),' min'],['Ranges: 41^o-149^o & 230^o-338^o'],'FontWeight','normal');
+title(['In PSARJ Range (left), Static BGA Intrusion into KOZ for ', num2str(tint_bkoz4),' min'],'FontWeight','normal');
+legend('BGA Interference Range: 41^o-149^o & 230^o-338^o');
+
+%----------- line plots--------------
+figure()
+plot(timevec_flt, PSARJ_flt,'.','LineWidth',.5);
+hold on
+plot(takoz2, akoz2,'.','LineWidth',.5);
+plot(tabkoz2, abkoz2,'.y','LineWidth',.5);
+plot(takoz4, akoz4,'.','LineWidth',.5);
+plot(tabkoz4, abkoz4,'.y','LineWidth',.5);
+xlabel('Time [min]');
+ylabel('Angle [deg]');
+legend('Filtered PSARJ Angles','P4-2A PSARJ Interference Angles','P4-2A PSARJ Angles of BGA Interference','P4-4A PSARJ Interference Angles','P4-4A PSARJ Angles of BGA Intereference');
+title(['P4-2A and P4-4A Interfere in EMIT KOZ ', num2str(perc_total_koz),'% of Operation Time'],['P4-4A Interferes in EMIT KOZ ',num2str(plost_akoz4),'% of Operation Time']);
+subtitle([num2str(mins_missing),' min of Missing Data Pre-Latitude Filter (', num2str(perc_missing),'% of year)']); 
+
 
 toc
 
